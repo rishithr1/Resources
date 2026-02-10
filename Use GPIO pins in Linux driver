@@ -1,0 +1,385 @@
+Perfect 👍 — now we’re stepping from hello module → real hardware control.
+
+You asked:
+
+“Use GPIO pins in Linux driver”
+
+This is a core BSP / embedded Linux skill used in:
+	•	Switch bring-up
+	•	Fan control
+	•	LED control
+	•	Reset lines
+	•	Power enable pins
+	•	CPLD signaling
+
+I’ll explain end-to-end:
+
+1️⃣ What GPIO is
+2️⃣ Why drivers use GPIO
+3️⃣ GPIO architecture in Linux
+4️⃣ APIs used
+5️⃣ Full kernel module example
+6️⃣ Line-by-line explanation
+7️⃣ Device Tree relation
+8️⃣ Build + run commands
+9️⃣ Debugging
+🔟 Real switch use cases
+
+⸻
+
+1️⃣ First — What is GPIO?
+
+GPIO = General Purpose Input Output
+
+Simple:
+
+👉 A programmable electrical pin on a chip.
+
+It can act as:
+	•	Input → Read signal
+	•	Output → Send signal
+
+⸻
+
+2️⃣ Real-Life Analogy 🔘
+
+Think of GPIO like a wall switch:
+	•	ON → Send voltage
+	•	OFF → No voltage
+
+You can:
+	•	Turn LED on/off
+	•	Reset hardware
+	•	Detect button press
+
+⸻
+
+3️⃣ GPIO Inside Networking Switch
+
+GPIO pins control:
+
+Function	Example
+Fan enable	Turn fan ON
+PSU detect	Power status
+LED control	Port status
+ASIC reset	Hardware reset
+SFP presence	Optics detect
+
+So BSP drivers use GPIO heavily.
+
+⸻
+
+4️⃣ Linux GPIO Architecture
+
+Flow:
+
+Application
+   ↓
+Sysfs / ioctl
+   ↓
+GPIO driver API
+   ↓
+GPIO controller driver
+   ↓
+Hardware pin
+
+Kernel abstracts physical pins.
+
+⸻
+
+5️⃣ GPIO Kernel APIs (Modern)
+
+Key functions:
+
+gpio_request()
+gpio_direction_output()
+gpio_set_value()
+gpio_get_value()
+gpio_free()
+
+Newer kernels use gpiod_* APIs, but basic GPIO still common in BSP.
+
+⸻
+
+6️⃣ Minimal GPIO Kernel Module Example
+
+This module:
+	•	Requests GPIO
+	•	Sets it as output
+	•	Toggles HIGH
+	•	Cleans up on exit
+
+⸻
+
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/gpio.h>
+
+#define GPIO_PIN 21   // Change as per board
+
+static int __init gpio_init(void)
+{
+    int ret;
+
+    printk(KERN_INFO "GPIO Module: Init\n");
+
+    /* Request GPIO */
+    ret = gpio_request(GPIO_PIN, "gpio_test");
+    if (ret) {
+        printk(KERN_ERR "Failed to request GPIO %d\n", GPIO_PIN);
+        return ret;
+    }
+
+    /* Set direction as output */
+    gpio_direction_output(GPIO_PIN, 1);
+
+    printk(KERN_INFO "GPIO %d set to HIGH\n", GPIO_PIN);
+
+    return 0;
+}
+
+static void __exit gpio_exit(void)
+{
+    gpio_set_value(GPIO_PIN, 0);
+    gpio_free(GPIO_PIN);
+
+    printk(KERN_INFO "GPIO Module: Exit\n");
+}
+
+module_init(gpio_init);
+module_exit(gpio_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("V S Rishith Reddy");
+MODULE_DESCRIPTION("Simple GPIO Driver Example");
+
+
+⸻
+
+7️⃣ Line-By-Line Explanation
+
+⸻
+
+Include headers
+
+#include <linux/gpio.h>
+
+Provides GPIO APIs.
+
+⸻
+
+Define GPIO number
+
+#define GPIO_PIN 21
+
+Pin number depends on board mapping.
+
+⸻
+
+Request GPIO
+
+gpio_request(GPIO_PIN, "gpio_test");
+
+Reserves pin for this driver.
+
+Prevents conflicts.
+
+⸻
+
+Set direction
+
+gpio_direction_output(GPIO_PIN, 1);
+
+Configures pin as output.
+
+1 → HIGH voltage.
+
+⸻
+
+Set value
+
+gpio_set_value(GPIO_PIN, 1);
+
+Turns signal ON.
+
+Used for LEDs, resets, power enable.
+
+⸻
+
+Cleanup
+
+gpio_free(GPIO_PIN);
+
+Releases pin when module removed.
+
+⸻
+
+8️⃣ GPIO Hardware View
+
+Shows how pins connect to LEDs, sensors, etc.
+
+⸻
+
+9️⃣ Build Makefile
+
+obj-m += gpio_test.o
+
+KDIR := /lib/modules/$(shell uname -r)/build
+PWD  := $(shell pwd)
+
+all:
+	make -C $(KDIR) M=$(PWD) modules
+
+clean:
+	make -C $(KDIR) M=$(PWD) clean
+
+
+⸻
+
+🔟 Build + Run Commands
+
+⸻
+
+Build
+
+make
+
+
+⸻
+
+Insert module
+
+sudo insmod gpio_test.ko
+
+
+⸻
+
+Check logs
+
+dmesg | tail
+
+
+⸻
+
+Remove module
+
+sudo rmmod gpio_test
+
+
+⸻
+
+1️⃣1️⃣ GPIO Input Example
+
+Read button/signal:
+
+gpio_direction_input(GPIO_PIN);
+int val = gpio_get_value(GPIO_PIN);
+
+Used for:
+	•	PSU presence detect
+	•	Fan fault detect
+	•	SFP insert detect
+
+⸻
+
+1️⃣2️⃣ GPIO via Device Tree
+
+Modern embedded systems define GPIO in DTS:
+
+Example:
+
+led_gpio {
+    gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;
+};
+
+Driver reads mapping dynamically.
+
+Used in ARM / switch platforms.
+
+⸻
+
+1️⃣3️⃣ Real Switch Use Cases
+
+GPIO Function	Example
+Reset ASIC	Toggle reset line
+Control LEDs	Link/activity
+Fan enable	Thermal control
+PSU alarm	Fault signal
+Optics detect	SFP presence
+
+DiagOS tests these GPIO paths.
+
+⸻
+
+1️⃣4️⃣ Common GPIO Errors
+
+Error	Cause
+gpio_request fail	Pin busy
+No signal change	Wrong pin
+Kernel crash	Invalid mapping
+Always LOW	Pull-down resistor
+
+Hardware + software both matter.
+
+⸻
+
+1️⃣5️⃣ Old vs New GPIO APIs
+
+Old API	New API
+gpio_*	gpiod_*
+Number based	Descriptor based
+Legacy BSP	Modern kernel
+
+You’ll see both in switch codebases.
+
+⸻
+
+1️⃣6️⃣ Office Explanation
+
+Beginner:
+
+“GPIO drivers control hardware pins.”
+
+Expert:
+
+“GPIO kernel modules configure and manipulate SoC pin states for platform control functions such as resets, LED signaling, and presence detection.”
+
+⸻
+
+1️⃣7️⃣ Memory Shortcut
+
+gpio_request → Reserve pin
+gpio_direction → Set input/output
+gpio_set_value → Write signal
+gpio_get_value → Read signal
+gpio_free → Release pin
+
+
+⸻
+
+How GPIO Fits Into Your Switch BSP Stack
+
+Kernel boots
+   ↓
+GPIO driver loads
+   ↓
+Pins initialized
+   ↓
+Fans / LEDs / resets controlled
+   ↓
+DiagOS tests GPIO signals
+
+GPIO = basic hardware control layer.
+
+⸻
+
+If you want next hardware-driver topics:
+	•	I²C driver coding
+	•	EEPROM read driver
+	•	MDIO/PHY driver
+	•	PCIe driver probe
+	•	Interrupt-based GPIO driver
+
+All directly used in switch BSP 👍
